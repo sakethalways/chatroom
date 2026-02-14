@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatRoom - Real-Time Multi-User Chat</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%234CAF50'>💬</text></svg>">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      height: 100vh;
+      display: flex;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .home-screen {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    }
+
+    .home-screen.hidden {
+      display: none;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .logo {
+      font-size: 48px;
+      font-weight: bold;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 40px;
+      font-size: 14px;
+    }
+
+    .form-group {
+      width: 100%;
+      max-width: 400px;
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .button-group {
+      width: 100%;
+      max-width: 400px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    button {
+      padding: 14px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+      border: 2px solid #ddd;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #e8e8e8;
+      border-color: #667eea;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .tab-toggle {
+      width: 100%;
+      max-width: 400px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 30px;
+      border-radius: 8px;
+      background: #f0f0f0;
+      padding: 4px;
+    }
+
+    .tab-button {
+      background: transparent;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      color: #999;
+    }
+
+    .tab-button.active {
+      background: white;
+      color: #667eea;
+    }
+
+    .chat-screen {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .chat-screen.hidden {
+      display: none;
+    }
+
+    .chat-header {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .room-info {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .room-id {
+      font-size: 24px;
+      font-weight: bold;
+    }
+
+    .room-creator {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .room-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-exit {
+      background: #ff6b6b;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      border: none;
+      transition: all 0.3s;
+    }
+
+    .btn-exit:hover {
+      background: #ee5a52;
+    }
+
+    .btn-close {
+      background: #c92a2a;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      border: none;
+      transition: all 0.3s;
+    }
+
+    .btn-close:hover {
+      background: #a61e4d;
+    }
+
+    .btn-view-members {
+      display: none;
+    }
+
+    .chat-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .members-panel {
+      width: 250px;
+      background: #f8f9fa;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .members-header {
+      padding: 15px;
+      font-weight: 600;
+      color: #333;
+      background: #f0f0f0;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .member-item {
+      padding: 12px 15px;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .member-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    .member-info {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .member-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .member-badge {
+      font-size: 11px;
+      color: #667eea;
+      font-weight: 600;
+    }
+
+    .messages-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 20px;
+      background: white;
+    }
+
+    .message {
+      margin-bottom: 15px;
+      display: flex;
+      gap: 10px;
+      animation: slideIn 0.3s ease;
+      align-items: flex-end;
+      margin-left: 20px;
+      margin-right: auto;
+    }
+
+    .message.own {
+      justify-content: flex-end;
+      flex-direction: row-reverse;
+      margin-left: auto;
+      margin-right: 20px;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+    }
+
+    .message-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      flex-shrink: 0;
+      font-size: 12px;
+    }
+
+    .message-content {
+      display: flex;
+      flex-direction: column;
+      max-width: 70%;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .message.own .message-content {
+      align-items: flex-end;
+    }
+
+    .message-header {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 4px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .message.own .message-header {
+      justify-content: flex-end;
+      flex-direction: row-reverse;
+    }
+
+    .message-sender {
+      font-weight: 600;
+      color: #333;
+      font-size: 13px;
+    }
+
+    .message.own .message-sender {
+      color: #667eea;
+    }
+
+    .message-time {
+      font-size: 11px;
+      color: #999;
+    }
+
+    .message.own .message-time {
+      color: #999;
+    }
+
+    .message-text {
+      background: #f0f0f0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      color: #333;
+      font-size: 14px;
+      display: inline-block;
+      word-wrap: break-word;
+    }
+
+    .message.own .message-text {
+      background: #667eea;
+      color: white;
+    }
+
+    .message-text.creator-message {
+      border: 2px solid #FFD700;
+      background: #fffacd;
+      color: #333;
+      font-weight: 500;
+    }
+
+    .message.own .message-text.creator-message {
+      background: #FFD700;
+      border: 2px solid #FFA500;
+      color: white;
+    }
+
+    .typing-indicator {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      color: #667eea;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+
+    .typing-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #667eea;
+      animation: typing 1.4s infinite;
+    }
+
+    .typing-dot:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .typing-dot:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes typing {
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.5;
+      }
+      30% {
+        transform: translateY(-10px);
+        opacity: 1;
+      }
+    }
+
+    .message-input-area {
+      padding: 20px;
+      background: white;
+      border-top: 1px solid #ddd;
+      display: flex;
+      gap: 10px;
+    }
+
+    .message-input {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      resize: none;
+      font-family: inherit;
+      transition: border-color 0.3s;
+    }
+
+    .message-input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .btn-send {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+
+    .btn-send:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-send:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal.hidden {
+      display: none;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      max-width: 500px;
+      text-align: center;
+      animation: scaleIn 0.3s ease;
+    }
+
+    @keyframes scaleIn {
+      from {
+        opacity: 0;
+        transform: scale(0.9);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 15px;
+    }
+
+    .modal-message {
+      color: #666;
+      margin-bottom: 30px;
+      line-height: 1.5;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .error-message {
+      color: #ff6b6b;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+
+    .info-message {
+      color: #51cf66;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        max-width: 100%;
+        border-radius: 0;
+        max-height: 100vh;
+      }
+
+      .home-screen {
+        padding: 20px;
+        justify-content: flex-start;
+        padding-top: 40px;
+      }
+
+      .logo {
+        font-size: 32px;
+        margin-bottom: 10px;
+      }
+
+      .subtitle {
+        font-size: 12px;
+        margin-bottom: 30px;
+      }
+
+      .form-group {
+        max-width: 100%;
+        margin-bottom: 15px;
+      }
+
+      .form-group input,
+      .form-group select {
+        padding: 10px;
+        font-size: 16px;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        padding: 10px 16px;
+        font-size: 14px;
+      }
+
+      .button-group {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .chat-header {
+        flex-direction: row;
+        gap: 8px;
+        padding: 12px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .room-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .btn-view-members {
+        display: flex !important;
+        background: rgba(255,255,255,0.2) !important;
+        color: white !important;
+        border: 1px solid rgba(255,255,255,0.3) !important;
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+        border-radius: 6px !important;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+
+      .btn-view-members:hover {
+        background: rgba(255,255,255,0.3) !important;
+      }
+
+      .notification-container {
+        top: 65px !important;
+      }
+
+      .notification-container > div {
+        font-size: 12px !important;
+        padding: 8px 12px !important;
+      }
+
+      .room-id {
+        font-size: 16px;
+      }
+
+      .room-creator {
+        font-size: 11px;
+      }
+
+      .room-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .btn-exit,
+      .btn-close {
+        padding: 6px 10px;
+        font-size: 11px;
+        white-space: nowrap;
+      }
+
+      .members-panel {
+        display: none;
+      }
+
+      .btn-view-members {
+        display: none;
+      }
+
+      .chat-content {
+        flex-direction: column;
+      }
+
+      .message {
+        margin-left: 10px;
+        margin-right: auto;
+        margin-bottom: 10px;
+      }
+
+      .message.own {
+        margin-left: auto;
+        margin-right: 10px;
+      }
+
+      .message-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 10px;
+      }
+
+      .message-content {
+        max-width: 85%;
+      }
+
+      .message-header {
+        font-size: 10px;
+        gap: 4px;
+      }
+
+      .message-sender {
+        font-size: 11px;
+      }
+
+      .message-time {
+        font-size: 9px;
+      }
+
+      .message-text {
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+
+      .message-input-area {
+        padding: 10px;
+        gap: 6px;
+      }
+
+      .message-input {
+        padding: 8px;
+        font-size: 14px;
+      }
+
+      .btn-send {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      .member-item {
+        padding: 10px 12px;
+        font-size: 12px;
+      }
+
+      .member-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 10px;
+      }
+
+      .member-info {
+        font-size: 12px;
+      }
+
+      .modal-content {
+        width: 90%;
+        max-width: 300px;
+        padding: 20px;
+      }
+
+      .modal-title {
+        font-size: 18px;
+      }
+
+      .modal-box {
+        font-size: 20px;
+      }
+
+      .modal-buttons {
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        width: 100%;
+      }
+
+      .tab-button {
+        padding: 8px;
+        font-size: 12px;
+      }
+
+      .error-message {
+        font-size: 11px;
+      }
+
+      .typing-indicator {
+        font-size: 11px;
+        gap: 3px;
+      }
+
+      #messageCounter {
+        font-size: 10px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .logo {
+        font-size: 24px;
+      }
+
+      .subtitle {
+        font-size: 11px;
+      }
+
+      .form-group label {
+        font-size: 13px;
+      }
+
+      .form-group input,
+      .form-group select {
+        padding: 8px;
+        font-size: 14px;
+        border-radius: 6px;
+      }
+
+      .home-screen {
+        padding: 15px;
+        padding-top: 30px;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        padding: 8px 12px;
+        font-size: 12px;
+      }
+
+      .chat-header {
+        padding: 10px;
+        gap: 6px;
+      }
+
+      .room-id {
+        font-size: 14px;
+      }
+
+      .message {
+        margin-left: 5px;
+        margin-right: 5px;
+        margin-bottom: 8px;
+        gap: 6px;
+      }
+
+      .message-content {
+        max-width: 80%;
+      }
+
+      .message-text {
+        padding: 6px 8px;
+        font-size: 12px;
+        border-radius: 6px;
+      }
+
+      .message-avatar {
+        width: 24px;
+        height: 24px;
+        font-size: 9px;
+      }
+
+      .message-header {
+        font-size: 9px;
+        gap: 3px;
+      }
+
+      .message-input-area {
+        padding: 8px;
+        gap: 4px;
+      }
+
+      .message-input {
+        padding: 6px;
+        font-size: 12px;
+        border-radius: 4px;
+      }
+
+      .btn-send {
+        padding: 6px 10px;
+        font-size: 11px;
+        border-radius: 4px;
+      }
+
+      .modal-content {
+        width: 95%;
+        padding: 15px;
+      }
+
+      .modal-title {
+        font-size: 16px;
+      }
+
+      .error-message {
+        font-size: 10px;
+      }
+
+      .tab-button {
+        padding: 6px;
+        font-size: 11px;
+      }
+
+      .typing-indicator {
+        font-size: 10px;
+      }
+    }
+
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .members-panel {
+        width: 200px;
+      }
+
+      .message-content {
+        max-width: 65%;
+      }
+
+      .container {
+        max-width: 100%;
+      }
+
+      .form-group {
+        max-width: 350px;
+      }
+
+      .home-screen {
+        padding: 30px;
+      }
+    }
+
+    @media (min-width: 1025px) {
+      .container {
+        max-width: 1200px;
+      }
+
+      .members-panel {
+        width: 250px;
+      }
+
+      .message-content {
+        max-width: 70%;
+      }
+
+      .form-group {
+        max-width: 400px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="home-screen" id="homeScreen">
+      <div class="logo">ChatRoom</div>
+      <div class="subtitle">Real-time multi-user chat</div>
+
+      <div class="tab-toggle">
+        <button class="tab-button active" data-tab="create">Create Room</button>
+        <button class="tab-button" data-tab="join">Join Room</button>
+      </div>
+
+      <div id="createTab" class="tab-content">
+        <div class="form-group">
+          <label>Your Name</label>
+          <input type="text" id="createName" placeholder="Enter your name..." maxlength="50">
+          <div class="error-message" id="createError"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Room Code (Optional)</label>
+          <input type="text" id="customRoomCode" placeholder="Leave blank for auto-generated code (3-20 chars, A-Z, 0-9)" maxlength="20" style="text-transform: uppercase;">
+          <div class="error-message" id="codeFormatError"></div>
+          <small style="color: #999; font-size: 11px; margin-top: 5px; display: block;">If left empty, a random code like ABC123 will be generated</small>
+        </div>
+
+        <div class="button-group">
+          <button class="btn-primary" id="createRoomBtn" onclick="createRoom()">Create Room</button>
+          <button class="btn-secondary" onclick="resetCreateForm()">Reset</button>
+        </div>
+      </div>
+
+      <div id="joinTab" class="tab-content" style="display: none;">
+        <div class="form-group">
+          <label>Your Name</label>
+          <input type="text" id="joinName" placeholder="Enter your name..." maxlength="50">
+          <div class="error-message" id="joinError"></div>
+        </div>
+
+        <div class="form-group">
+          <label>Room Code</label>
+          <input type="text" id="roomCode" placeholder="Enter room code..." maxlength="10" style="text-transform: uppercase;">
+          <div class="error-message" id="codeError"></div>
+        </div>
+
+        <div class="button-group">
+          <button class="btn-primary" id="joinRoomBtn" onclick="joinRoom()">Join Room</button>
+          <button class="btn-secondary" onclick="resetJoinForm()">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-screen hidden" id="chatScreen">
+      <div id="notificationContainer" style="position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 1000; max-width: 90%; pointer-events: none;" class="notification-container"></div>
+      
+      <div class="chat-header">
+        <div class="room-info">
+          <div class="room-id" id="headerRoomId"></div>
+          <div class="room-creator" id="headerCreator"></div>
+          <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 5px;" id="messageCounter"></div>
+        </div>
+        <button class="btn-view-members hidden" id="viewMembersBtn" onclick="openMembersModal()">👥 Members</button>
+        <div class="room-actions">
+          <button class="btn-exit hidden" id="exitBtn" onclick="exitRoom()">Exit</button>
+          <button class="btn-close hidden" id="closeBtn" onclick="closeRoom()">Close Room</button>
+        </div>
+      </div>
+
+      <div class="chat-content">
+        <div class="members-panel">
+          <div class="members-header">Members (<span id="memberCount">0</span>)</div>
+          <div id="membersList"></div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          <div class="messages-area" id="messagesArea"></div>
+
+          <div class="message-input-area">
+            <input type="text" class="message-input" id="messageInput" placeholder="Type a message..." maxlength="500">
+            <button class="btn-send" id="sendBtn" onclick="sendMessage()">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="roomCreatedModal">
+    <div class="modal-content">
+      <div class="modal-title">✅ Room Created!</div>
+      <div class="modal-message">
+        <p>Your room code:</p>
+        <div style="background: #f0f0f0; padding: 20px; border-radius: 8px; margin: 15px 0; font-size: 28px; font-weight: bold; color: #667eea; letter-spacing: 2px; text-align: center;" id="roomCodeDisplay"></div>
+        <p style="font-size: 12px; color: #999; margin-top: 15px;">Share this code with friends so they can join your room</p>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-secondary" onclick="dismissRoomModal()">Got it! Go to Chat</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="roomClosedModal">
+    <div class="modal-content">
+      <div class="modal-title">🔔 Room Closed</div>
+      <div class="modal-message" id="roomClosedMessage"></div>
+      <div class="modal-buttons">
+        <button class="btn-primary" onclick="redirectHome()">Back to Home</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="membersModal">
+    <div class="modal-content" style="max-width: 90%; width: 100%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <div class="modal-title" style="margin-bottom: 0;">Members</div>
+        <button onclick="closeMembersModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #999;">&times;</button>
+      </div>
+      <div style="max-height: 60vh; overflow-y: auto; margin-bottom: 15px;">
+        <div id="mobileMembers" style="display: flex; flex-direction: column; gap: 8px;"></div>
+      </div>
+      <div class="modal-buttons">
+        <button class="btn-secondary" onclick="closeMembersModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let state = {
+      userId: null,
+      roomId: null,
+      isCreator: false,
+      userName: null,
+      currentTab: 'create',
+      pollingInterval: null,
+      heartbeatInterval: null,
+      typingTimeout: null,
+      messages: [],
+      roomUsers: [],
+      typingUsers: new Map(),
+      typingTimeouts: new Map()
+    };
+
+    const API_BASE = `http://${window.location.hostname}:3000/api`;
+
+    document.querySelectorAll('[data-tab]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+        
+        e.target.classList.add('active');
+        state.currentTab = e.target.dataset.tab;
+        
+        if (state.currentTab === 'create') {
+          document.getElementById('createTab').style.display = 'block';
+        } else {
+          document.getElementById('joinTab').style.display = 'block';
+        }
+      });
+    });
+
+    async function createRoom() {
+      const name = document.getElementById('createName').value.trim();
+      const customCode = document.getElementById('customRoomCode').value.trim().toUpperCase();
+      const errorEl = document.getElementById('createError');
+      const codeErrorEl = document.getElementById('codeFormatError');
+
+      errorEl.textContent = '';
+      codeErrorEl.textContent = '';
+
+      if (!name) {
+        errorEl.textContent = '❌ Please enter your name';
+        return;
+      }
+
+      if (customCode) {
+        if (!/^[A-Z0-9]{3,20}$/.test(customCode)) {
+          codeErrorEl.textContent = '❌ Room code must be 3-20 alphanumeric characters (A-Z, 0-9)';
+          return;
+        }
+      }
+
+      document.getElementById('createRoomBtn').disabled = true;
+
+      try {
+        const response = await fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'create_room', 
+            userName: name,
+            roomId: customCode || 'AUTO_GENERATE'
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          state.userId = data.userId;
+          state.roomId = data.roomId;
+          state.isCreator = data.isCreator;
+          state.userName = name;
+          enterChatScreen();
+        } else {
+          codeErrorEl.textContent = `❌ ${data.error || 'Failed to create room'}`;
+        }
+      } catch (e) {
+        errorEl.textContent = '❌ Network error';
+        console.error(e);
+      } finally {
+        document.getElementById('createRoomBtn').disabled = false;
+      }
+    }
+
+    async function joinRoom() {
+      const name = document.getElementById('joinName').value.trim();
+      const code = document.getElementById('roomCode').value.trim().toUpperCase();
+      const nameError = document.getElementById('joinError');
+      const codeError = document.getElementById('codeError');
+
+      nameError.textContent = '';
+      codeError.textContent = '';
+
+      if (!name) {
+        nameError.textContent = '❌ Please enter your name';
+        return;
+      }
+
+      if (!code) {
+        codeError.textContent = '❌ Please enter room code';
+        return;
+      }
+
+      document.getElementById('joinRoomBtn').disabled = true;
+
+      try {
+        const response = await fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'join_room', userName: name, roomId: code })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          state.userId = data.userId;
+          state.roomId = data.roomId;
+          state.isCreator = data.isCreator;
+          state.userName = name;
+          enterChatScreen();
+        } else {
+          codeError.textContent = `❌ ${data.error || 'Failed to join room'}`;
+        }
+      } catch (e) {
+        codeError.textContent = '❌ Network error';
+        console.error(e);
+      } finally {
+        document.getElementById('joinRoomBtn').disabled = false;
+      }
+    }
+
+    function enterChatScreen() {
+      document.getElementById('homeScreen').classList.add('hidden');
+      document.getElementById('chatScreen').classList.remove('hidden');
+
+      document.getElementById('headerRoomId').textContent = `Room: ${state.roomId}`;
+      document.getElementById('headerCreator').textContent = state.isCreator ? '👑 You are the creator' : '';
+
+      if (state.isCreator) {
+        document.getElementById('exitBtn').classList.add('hidden');
+        document.getElementById('closeBtn').classList.remove('hidden');
+        document.getElementById('roomCodeDisplay').textContent = state.roomId;
+        document.getElementById('roomCreatedModal').classList.remove('hidden');
+      } else {
+        document.getElementById('exitBtn').classList.remove('hidden');
+        document.getElementById('closeBtn').classList.add('hidden');
+      }
+
+      startPolling();
+      startHeartbeat();
+      updateMessageCounter();
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const content = input.value.trim();
+
+      if (!content) return;
+
+      document.getElementById('sendBtn').disabled = true;
+
+      try {
+        const response = await fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'send_message',
+            userId: state.userId,
+            roomId: state.roomId,
+            content: content
+          })
+        });
+
+        if (response.ok) {
+          input.value = '';
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        document.getElementById('sendBtn').disabled = false;
+        input.focus();
+      }
+    }
+
+    function handleTyping() {
+      fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'typing',
+          userId: state.userId,
+          roomId: state.roomId,
+          isTyping: true
+        })
+      }).catch(e => console.error(e));
+
+      clearTimeout(state.typingTimeout);
+      state.typingTimeout = setTimeout(() => {}, 2000);
+    }
+
+    document.getElementById('messageInput')?.addEventListener('input', handleTyping);
+    document.getElementById('messageInput')?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    function startPolling() {
+      poll();
+      state.pollingInterval = setInterval(poll, 200);
+    }
+
+    async function poll() {
+      try {
+        const response = await fetch(
+          `${API_BASE}/chat?action=poll&userId=${state.userId}&roomId=${state.roomId}`
+        );
+        const data = await response.json();
+
+        if (data.events) {
+          data.events.forEach(event => {
+            handleEvent(event);
+          });
+        }
+      } catch (e) {
+        console.error('Poll error:', e);
+      }
+    }
+
+    function handleEvent(event) {
+      switch (event.type) {
+        case 'connected':
+          state.roomUsers = event.roomUsers || [];
+          state.messages = event.messages || [];
+          updateUI();
+          break;
+
+        case 'user_joined_room':
+          state.roomUsers = event.roomUsers || [];
+          showNotification(`➕ ${event.userName} has joined`);
+          updateUI();
+          break;
+
+        case 'message_received':
+          state.messages.push(event);
+          if (state.typingTimeouts.has(event.senderName)) {
+            clearTimeout(state.typingTimeouts.get(event.senderName));
+            state.typingTimeouts.delete(event.senderName);
+          }
+          state.typingUsers.delete(event.senderName);
+          updateMessages();
+          break;
+
+        case 'user_left_room':
+          if (event.roomUsers) {
+            state.roomUsers = event.roomUsers;
+          }
+          showNotification(`➖ ${event.userName} has exited`);
+          updateUI();
+          break;
+
+        case 'creator_left':
+          clearInterval(state.pollingInterval);
+          clearInterval(state.heartbeatInterval);
+          state.typingTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+          document.getElementById('roomClosedMessage').textContent = 
+            `${event.creatorName} has closed this room. All conversations have ended.`;
+          document.getElementById('roomClosedModal').classList.remove('hidden');
+          state.roomUsers = [];
+          state.messages = [];
+          state.typingUsers.clear();
+          break;
+
+        case 'typing_update':
+          if (event.isTyping) {
+            if (state.typingTimeouts.has(event.userName)) {
+              clearTimeout(state.typingTimeouts.get(event.userName));
+            }
+            
+            state.typingUsers.set(event.userName, true);
+            
+            const timeoutId = setTimeout(() => {
+              state.typingUsers.delete(event.userName);
+              state.typingTimeouts.delete(event.userName);
+              updateTypingIndicator();
+            }, 2000);
+            
+            state.typingTimeouts.set(event.userName, timeoutId);
+            updateTypingIndicator();
+          } else {
+            if (state.typingTimeouts.has(event.userName)) {
+              clearTimeout(state.typingTimeouts.get(event.userName));
+            }
+            state.typingUsers.delete(event.userName);
+            state.typingTimeouts.delete(event.userName);
+            updateTypingIndicator();
+          }
+          break;
+      }
+    }
+
+    function addSystemMessage(text) {
+      const msg = document.createElement('div');
+      msg.style.textAlign = 'center';
+      msg.style.fontSize = '12px';
+      msg.style.color = '#999';
+      msg.style.padding = '10px';
+      msg.style.margin = '10px 0';
+      msg.textContent = text;
+      document.getElementById('messagesArea').appendChild(msg);
+      document.getElementById('messagesArea').scrollTop = 
+        document.getElementById('messagesArea').scrollHeight;
+    }
+
+    function showNotification(text) {
+      const container = document.getElementById('notificationContainer');
+      const notification = document.createElement('div');
+      notification.style.background = '#667eea';
+      notification.style.color = 'white';
+      notification.style.padding = '12px 20px';
+      notification.style.borderRadius = '6px';
+      notification.style.fontSize = '14px';
+      notification.style.marginBottom = '10px';
+      notification.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
+      notification.style.animation = 'slideDown 0.3s ease';
+      notification.textContent = text;
+      
+      container.appendChild(notification);
+      
+      setTimeout(() => {
+        notification.style.animation = 'slideUp 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
+    }
+
+    function updateUI() {
+      updateMembers();
+      updateMessages();
+    }
+
+    function updateMembers() {
+      const container = document.getElementById('membersList');
+      container.innerHTML = '';
+      document.getElementById('memberCount').textContent = state.roomUsers.length;
+
+      state.roomUsers.forEach(user => {
+        const el = document.createElement('div');
+        el.className = 'member-item';
+        
+        const avatar = document.createElement('div');
+        avatar.className = 'member-avatar';
+        avatar.style.background = user.color;
+        avatar.textContent = user.name.charAt(0).toUpperCase();
+
+        const info = document.createElement('div');
+        info.className = 'member-info';
+
+        const name = document.createElement('div');
+        name.className = 'member-name';
+        name.textContent = user.name;
+
+        const badge = document.createElement('div');
+        badge.className = 'member-badge';
+        badge.textContent = user.isCreator ? '👑 Creator' : '';
+
+        info.appendChild(name);
+        if (user.isCreator) info.appendChild(badge);
+        
+        el.appendChild(avatar);
+        el.appendChild(info);
+        container.appendChild(el);
+      });
+    }
+
+    function updateMessages() {
+      const container = document.getElementById('messagesArea');
+      container.innerHTML = '';
+
+      state.messages.forEach(msg => {
+        const el = document.createElement('div');
+        el.className = 'message';
+        
+        const isOwnMessage = msg.senderId && msg.senderId === state.userId;
+        if (isOwnMessage) {
+          el.classList.add('own');
+        }
+
+        const avatar = document.createElement('div');
+        avatar.className = 'message-avatar';
+        avatar.style.background = msg.senderColor;
+        avatar.textContent = msg.senderName.charAt(0).toUpperCase();
+
+        const content = document.createElement('div');
+        content.className = 'message-content';
+
+        const header = document.createElement('div');
+        header.className = 'message-header';
+        header.innerHTML = `<span class="message-sender">${msg.senderName}</span> 
+                           <span class="message-time">${new Date(msg.timestamp).toLocaleTimeString()}</span>`;
+
+        const text = document.createElement('div');
+        text.className = 'message-text';
+        text.textContent = msg.content;
+        
+        if (msg.isCreator) {
+          text.classList.add('creator-message');
+        }
+
+        content.appendChild(header);
+        content.appendChild(text);
+
+        el.appendChild(avatar);
+        el.appendChild(content);
+        container.appendChild(el);
+      });
+
+      updateTypingIndicator();
+      updateMessageCounter();
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function updateMessageCounter() {
+      const count = state.messages.length;
+      const limit = 500;
+      const percentage = Math.round((count / limit) * 100);
+      document.getElementById('messageCounter').textContent = `Messages: ${count}/${limit}`;
+      
+      if (percentage > 80) {
+        document.getElementById('messageCounter').style.color = '#FFB6C1';
+      } else if (percentage > 90) {
+        document.getElementById('messageCounter').style.color = '#FF6B6B';
+      } else {
+        document.getElementById('messageCounter').style.color = 'rgba(255,255,255,0.7)';
+      }
+    }
+
+    function updateTypingIndicator() {
+      const container = document.getElementById('messagesArea');
+      const existing = container.querySelector('.typing-indicator');
+      if (existing) existing.remove();
+
+      if (state.typingUsers.size > 0) {
+        const el = document.createElement('div');
+        el.className = 'typing-indicator';
+
+        const names = Array.from(state.typingUsers.keys()).join(', ');
+        el.innerHTML = `${names} is typing 
+                       <div class="typing-dot"></div>
+                       <div class="typing-dot"></div>
+                       <div class="typing-dot"></div>`;
+
+        container.appendChild(el);
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+
+    function startHeartbeat() {
+      state.heartbeatInterval = setInterval(() => {
+        fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'heartbeat',
+            userId: state.userId
+          })
+        }).catch(e => console.error(e));
+      }, 15000);
+    }
+
+    async function exitRoom() {
+      if (confirm('Leave this room?')) {
+        await fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'leave_room',
+            userId: state.userId,
+            roomId: state.roomId
+          })
+        }).catch(e => console.error(e));
+
+        redirectHome();
+      }
+    }
+
+    async function closeRoom() {
+      if (confirm('Close room? All members will be disconnected.')) {
+        await fetch(`${API_BASE}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'leave_room',
+            userId: state.userId,
+            roomId: state.roomId
+          })
+        }).catch(e => console.error(e));
+
+        redirectHome();
+      }
+    }
+
+    function dismissRoomModal() {
+      document.getElementById('roomCreatedModal').classList.add('hidden');
+    }
+
+    function redirectHome() {
+      clearInterval(state.pollingInterval);
+      clearInterval(state.heartbeatInterval);
+      
+      state.typingTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+
+      state = {
+        userId: null,
+        roomId: null,
+        isCreator: false,
+        userName: null,
+        currentTab: 'create',
+        messages: [],
+        roomUsers: [],
+        typingUsers: new Map(),
+        typingTimeouts: new Map()
+      };
+
+      document.getElementById('chatScreen').classList.add('hidden');
+      document.getElementById('homeScreen').classList.remove('hidden');
+      document.getElementById('roomCreatedModal').classList.add('hidden');
+      document.getElementById('roomClosedModal').classList.add('hidden');
+      document.getElementById('closeBtn').classList.add('hidden');
+      document.getElementById('messageCounter').textContent = '';
+
+      resetCreateForm();
+      resetJoinForm();
+    }
+
+    function resetCreateForm() {
+      document.getElementById('createName').value = '';
+      document.getElementById('customRoomCode').value = '';
+      document.getElementById('createError').textContent = '';
+      document.getElementById('codeFormatError').textContent = '';
+    }
+
+    function resetJoinForm() {
+      document.getElementById('joinName').value = '';
+      document.getElementById('roomCode').value = '';
+      document.getElementById('joinError').textContent = '';
+      document.getElementById('codeError').textContent = '';
+    }
+
+    function openMembersModal() {
+      const mobileMembers = document.getElementById('mobileMembers');
+      mobileMembers.innerHTML = '';
+
+      state.roomUsers.forEach(user => {
+        const el = document.createElement('div');
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.padding = '10px';
+        el.style.background = '#f9f9f9';
+        el.style.borderRadius = '6px';
+        el.style.gap = '10px';
+
+        const avatar = document.createElement('div');
+        avatar.style.width = '32px';
+        avatar.style.height = '32px';
+        avatar.style.borderRadius = '50%';
+        avatar.style.background = user.color;
+        avatar.style.display = 'flex';
+        avatar.style.alignItems = 'center';
+        avatar.style.justifyContent = 'center';
+        avatar.style.color = 'white';
+        avatar.style.fontSize = '14px';
+        avatar.style.fontWeight = 'bold';
+        avatar.style.flexShrink = 0;
+        avatar.textContent = user.name.charAt(0).toUpperCase();
+
+        const info = document.createElement('div');
+        info.style.flex = '1';
+        info.style.minWidth = '0';
+
+        const name = document.createElement('div');
+        name.style.fontSize = '14px';
+        name.style.fontWeight = '500';
+        name.style.color = '#333';
+        name.style.wordBreak = 'break-word';
+        name.textContent = user.name;
+
+        info.appendChild(name);
+
+        if (user.isCreator) {
+          const badge = document.createElement('div');
+          badge.style.fontSize = '12px';
+          badge.style.color = '#667eea';
+          badge.style.fontWeight = '600';
+          badge.style.marginTop = '3px';
+          badge.textContent = '👑 Creator';
+          info.appendChild(badge);
+        }
+
+        el.appendChild(avatar);
+        el.appendChild(info);
+        mobileMembers.appendChild(el);
+      });
+
+      document.getElementById('membersModal').classList.remove('hidden');
+    }
+
+    function closeMembersModal() {
+      document.getElementById('membersModal').classList.add('hidden');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const modal = document.getElementById('membersModal');
+      if (modal) {
+        modal.addEventListener('click', function(e) {
+          if (e.target === modal) {
+            closeMembersModal();
+          }
+        });
+      }
+    });
+  </script>
+
+</body>
+</html>
