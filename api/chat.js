@@ -5,6 +5,7 @@ const REDIS_URL = process.env.REDIS_URL;
 
 // Parse Redis URL to get token and host
 function parseRedisUrl(url) {
+  if (!url) throw new Error('REDIS_URL environment variable is not set');
   const match = url.match(/rediss:\/\/default:(.+)@(.+):\d+/);
   if (!match) throw new Error('Invalid REDIS_URL format');
   return {
@@ -13,9 +14,14 @@ function parseRedisUrl(url) {
   };
 }
 
-const { token, host } = parseRedisUrl(REDIS_URL);
-const UPSTASH_API = `https://${host}`;
-const AUTH_HEADER = `Bearer ${token}`;
+let UPSTASH_API, AUTH_HEADER;
+try {
+  const { token, host } = parseRedisUrl(REDIS_URL);
+  UPSTASH_API = `https://${host}`;
+  AUTH_HEADER = `Bearer ${token}`;
+} catch (error) {
+  console.error('Startup error:', error.message);
+}
 
 // Redis command helper using Upstash REST API
 async function redis(command, ...args) {
@@ -494,9 +500,14 @@ export default async function handler(req, res) {
     return;
   }
   
+  if (!REDIS_URL) {
+    console.error('REDIS_URL not configured');
+    return res.status(500).json({ success: false, error: 'Server not configured' });
+  }
+  
   try {
     if (req.method === 'POST') {
-      const data = req.body;
+      const data = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const action = data.action;
       let response;
       
