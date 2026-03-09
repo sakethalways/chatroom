@@ -7,8 +7,34 @@ try {
   if (!REDIS_URL) {
     throw new Error('REDIS_URL environment variable is not set');
   }
+  
+  // Convert TCP format (rediss://) to REST format (https://)
+  let restUrl, token;
+  
+  if (REDIS_URL.startsWith('rediss://')) {
+    // Parse rediss://default:TOKEN@HOST:6379
+    const match = REDIS_URL.match(/rediss:\/\/default:(.+)@(.+):\d+/);
+    if (!match) {
+      throw new Error('Invalid REDIS_URL format');
+    }
+    token = match[1];
+    const host = match[2];
+    restUrl = `https://${host}`;
+  } else if (REDIS_URL.startsWith('https://')) {
+    // Already in REST format
+    restUrl = REDIS_URL;
+    // Token might be embedded or needs to be extracted
+    const tokenMatch = REDIS_URL.match(/token=(.+?)(?:&|$)/);
+    if (tokenMatch) {
+      token = tokenMatch[1];
+    }
+  } else {
+    throw new Error('REDIS_URL must start with rediss:// or https://');
+  }
+  
   redis = new Redis({
-    url: REDIS_URL,
+    url: restUrl,
+    token: token,
     autoResetTtl: true
   });
 } catch (error) {
