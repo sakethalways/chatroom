@@ -1360,8 +1360,8 @@
     function startPolling() {
       poll();
       state.pollingInterval = setInterval(poll, 200);
-      // Refresh room state every 5 seconds as a safety net
-      state.refreshInterval = setInterval(refreshRoomState, 5000);
+      // Refresh room state every 10 seconds as safety net (increased to reduce conflicts)
+      state.refreshInterval = setInterval(refreshRoomState, 10000);
     }
 
     async function refreshRoomState() {
@@ -1371,18 +1371,27 @@
         );
         const data = await response.json();
         
-        if (data.success && data.roomUsers && data.messages) {
-          // Only update if there are actual changes
-          const usersChanged = JSON.stringify(state.roomUsers) !== JSON.stringify(data.roomUsers);
-          const messagesChanged = state.messages.length !== data.messages.length;
-          
+        if (data.success && data.roomUsers && data.messages !== undefined) {
+          // Update users if changed
+          const usersChanged = JSON.stringify(state.roomUsers.map(u => u.id).sort()) !== 
+                              JSON.stringify(data.roomUsers.map(u => u.id).sort());
           if (usersChanged) {
             state.roomUsers = data.roomUsers;
             updateMembers();
           }
-          if (messagesChanged) {
-            state.messages = data.messages;
-            updateMessages();
+          
+          // For messages: only update if we're missing messages (safety check)
+          // Don't overwrite if we have more messages locally (might be newer)
+          if (data.messages.length > state.messages.length) {
+            // Server has more messages - merge them
+            const localIds = new Set(state.messages.map(m => m.id));
+            const newMessages = data.messages.filter(m => !localIds.has(m.id));
+            if (newMessages.length > 0) {
+              state.messages.push(...newMessages);
+              // Sort by timestamp to keep order
+              state.messages.sort((a, b) => a.timestamp - b.timestamp);
+              updateMessages();
+            }
           }
         }
       } catch (e) {
@@ -1422,7 +1431,12 @@
           break;
 
         case 'message_received':
-          state.messages.push(event);
+          // Prevent duplicate messages - check if message ID already exists
+          if (!state.messages.some(m => m.id === event.id)) {
+            state.messages.push(event);
+            // Keep sorted by timestamp
+            state.messages.sort((a, b) => a.timestamp - b.timestamp);
+          }
           if (state.typingTimeouts.has(event.senderName)) {
             clearTimeout(state.typingTimeouts.get(event.senderName));
             state.typingTimeouts.delete(event.senderName);
@@ -1451,30 +1465,21 @@
           state.typingUsers.clear();
           break;
 
-        case 'typing_update':
-          if (event.isTyping) {
-            if (state.typingTimeouts.has(event.userName)) {
-              clearTimeout(state.typingTimeouts.get(event.userName));
-            }
-            
-            state.typingUsers.set(event.userName, true);
-            
-            const timeoutId = setTimeout(() => {
-              state.typingUsers.delete(event.userName);
-              state.typingTimeouts.delete(event.userName);
-              updateTypingIndicator();
-            }, 2000);
-            
-            state.typingTimeouts.set(event.userName, timeoutId);
-            updateTypingIndicator();
-          } else {
-            if (state.typingTimeouts.has(event.userName)) {
-              clearTimeout(state.typingTimeouts.get(event.userName));
-            }
+        case 'user_typing':
+          if (state.typingTimeouts.has(event.userName)) {
+            clearTimeout(state.typingTimeouts.get(event.userName));
+          }
+          
+          state.typingUsers.set(event.userName, true);
+          
+          const timeoutId = setTimeout(() => {
             state.typingUsers.delete(event.userName);
             state.typingTimeouts.delete(event.userName);
             updateTypingIndicator();
-          }
+          }, 2000);
+          
+          state.typingTimeouts.set(event.userName, timeoutId);
+          updateTypingIndicator();
           break;
       }
     }

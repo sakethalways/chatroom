@@ -232,14 +232,14 @@ async function handleJoinRoom(body) {
       messages: messages
     });
     
-    // Broadcast user joined event to all other users (not just excluding userId)
+    // Broadcast user joined event to all OTHER users (exclude the joiner)
     await broadcastToRoom(roomId, {
       type: 'user_joined_room',
       userId: userId,
       userName: userName,
       userColor: userColor,
       roomUsers: roomUsers
-    });
+    }, userId);
     
     return {
       success: true,
