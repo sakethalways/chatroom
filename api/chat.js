@@ -209,13 +209,13 @@ async function handleJoinRoom(body) {
       }
     }
     
-    // Get all messages in room
+    // Get all messages in room (in correct order - oldest first)
     const messagesList = await redis.lrange(`room:${roomId}:messages`, 0, -1);
     const messages = [];
     if (messagesList && Array.isArray(messagesList)) {
       for (const msg of messagesList) {
         try {
-          messages.unshift(JSON.parse(msg));
+          messages.push(JSON.parse(msg));
         } catch (e) {
           console.error('Error parsing message:', e);
         }
@@ -232,14 +232,14 @@ async function handleJoinRoom(body) {
       messages: messages
     });
     
-    // Broadcast user joined event to all other users
+    // Broadcast user joined event to all other users (not just excluding userId)
     await broadcastToRoom(roomId, {
       type: 'user_joined_room',
       userId: userId,
       userName: userName,
       userColor: userColor,
       roomUsers: roomUsers
-    }, userId);
+    });
     
     return {
       success: true,
@@ -268,7 +268,7 @@ async function handleLeaveRoom(body) {
     const isCreator = user.isCreator === 'true';
     
     if (isCreator) {
-      // Creator left - delete entire room
+      // Creator left - close room and notify all users
       const allUserIds = await redis.smembers(`room:${roomId}:users`);
       if (allUserIds && Array.isArray(allUserIds)) {
         for (const uId of allUserIds) {
@@ -302,7 +302,7 @@ async function handleLeaveRoom(body) {
         }
       }
       
-      // Broadcast user left event
+      // Broadcast user left event (including to existing users)
       await broadcastToRoom(roomId, {
         type: 'user_left_room',
         userName: user.name,
@@ -322,7 +322,12 @@ async function handleLeaveRoom(body) {
 
 async function handleSendMessage(body) {
   try {
-    const { userId, roomId, text } = JSON.parse(body);
+    const { userId, roomId, content, text } = JSON.parse(body);
+    const messageContent = content || text;
+    
+    if (!messageContent || messageContent.length < 1 || messageContent.length > 500) {
+      return { success: false, error: 'Invalid message' };
+    }
     
     const user = await redis.hgetall(`user:${userId}`);
     if (!user || user.roomId !== roomId) {
@@ -334,21 +339,21 @@ async function handleSendMessage(body) {
       senderId: userId,
       senderName: user.name,
       senderColor: user.color,
-      content: text,
+      content: messageContent,
       timestamp: Date.now(),
       isCreator: user.isCreator === 'true'
     };
     
-    await redis.lpush(`room:${roomId}:messages`, JSON.stringify(message));
+    await redis.rpush(`room:${roomId}:messages`, JSON.stringify(message));
     
-    // Broadcast to all users in room
+    // Broadcast to all users in room (including the sender)
     await broadcastToRoom(roomId, {
       type: 'message_received',
       id: message.id,
       senderId: userId,
       senderName: user.name,
       senderColor: user.color,
-      content: text,
+      content: messageContent,
       timestamp: message.timestamp,
       isCreator: user.isCreator === 'true'
     });
