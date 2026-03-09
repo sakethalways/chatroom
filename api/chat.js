@@ -1,50 +1,18 @@
-// Vercel Serverless Function - Chat API
-// Uses Upstash Redis REST API
+import { Redis } from '@upstash/redis';
 
 const REDIS_URL = process.env.REDIS_URL;
 
-// Parse Redis URL to get token and host
-function parseRedisUrl(url) {
-  if (!url) throw new Error('REDIS_URL environment variable is not set');
-  const match = url.match(/rediss:\/\/default:(.+)@(.+):\d+/);
-  if (!match) throw new Error('Invalid REDIS_URL format');
-  return {
-    token: match[1],
-    host: match[2]
-  };
-}
-
-let UPSTASH_API, AUTH_HEADER;
+let redis;
 try {
-  const { token, host } = parseRedisUrl(REDIS_URL);
-  UPSTASH_API = `https://${host}`;
-  AUTH_HEADER = `Bearer ${token}`;
-} catch (error) {
-  console.error('Startup error:', error.message);
-}
-
-// Redis command helper using Upstash REST API
-async function redis(command, ...args) {
-  try {
-    const response = await fetch(`${UPSTASH_API}/exec`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': AUTH_HEADER
-      },
-      body: JSON.stringify([command, ...args])
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Redis error: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data.result;
-  } catch (error) {
-    console.error('Redis error:', error);
-    throw error;
+  if (!REDIS_URL) {
+    throw new Error('REDIS_URL environment variable is not set');
   }
+  redis = new Redis({
+    url: REDIS_URL,
+    autoResetTtl: true
+  });
+} catch (error) {
+  console.error('Redis initialization error:', error.message);
 }
 
 function generateId(prefix) {
@@ -66,15 +34,25 @@ function getRandomColor() {
 }
 
 async function pushEvent(userId, event) {
-  await redis('lpush', `events:${userId}`, JSON.stringify(event));
+  try {
+    await redis.lpush(`events:${userId}`, JSON.stringify(event));
+  } catch (e) {
+    console.error('Error pushing event:', e);
+  }
 }
 
 async function broadcastToRoom(roomId, event, excludeUserId = null) {
-  const userIds = await redis('smembers', `room:${roomId}:users`) || [];
-  
-  for (const userId of userIds) {
-    if (excludeUserId && userId === excludeUserId) continue;
-    await pushEvent(userId, event);
+  try {
+    const userIds = await redis.smembers(`room:${roomId}:users`);
+    
+    if (userIds && Array.isArray(userIds)) {
+      for (const userId of userIds) {
+        if (excludeUserId && userId === excludeUserId) continue;
+        await pushEvent(userId, event);
+      }
+    }
+  } catch (e) {
+    console.error('Error broadcasting:', e);
   }
 }
 
@@ -93,7 +71,7 @@ async function handleCreateRoom(body) {
         return { success: false, error: 'Room code must be 3-20 alphanumeric characters (uppercase)' };
       }
       
-      const exists = await redis('exists', `rooms:${customRoomId}`);
+      const exists = await redis.exists(`rooms:${customRoomId}`);
       if (exists) {
         return { success: false, error: 'Room code already exists. Please choose another.' };
       }
@@ -104,190 +82,93 @@ async function handleCreateRoom(body) {
     }
     
     const userId = generateId('user');
-    const color = getRandomColor();
+    const userColor = getRandomColor();
+    const now = Date.now();
     
-    const user = {
-      id: userId,
-      name: userName,
-      color: color,
-      roomId: roomId,
-      isCreator: 'true',
-      joinedAt: Date.now(),
-      lastHeartbeat: Date.now(),
-      isOnline: 'true'
-    };
-    
-    const room = {
+    await redis.hset(`rooms:${roomId}`, {
       id: roomId,
       creatorId: userId,
       creatorName: userName,
-      createdAt: Date.now(),
-      lastActivity: Date.now(),
-      isActive: 'true'
-    };
+      createdAt: now.toString()
+    });
     
-    await redis('hset', `rooms:${roomId}`, ...Object.entries(room).flat());
-    await redis('hset', `user:${userId}`, ...Object.entries(user).flat());
-    await redis('sadd', `room:${roomId}:users`, userId);
+    await redis.hset(`user:${userId}`, {
+      id: userId,
+      name: userName,
+      color: userColor,
+      roomId: roomId,
+      isCreator: 'true',
+      joinedAt: now.toString(),
+      lastHeartbeat: now.toString()
+    });
     
-    await pushEvent(userId, { type: 'connected', roomId, userId, userName, color });
+    await redis.sadd(`room:${roomId}:users`, userId);
     
     return {
       success: true,
-      userId,
-      roomId,
-      isCreator: true,
-      message: 'Room created successfully'
+      roomId: roomId,
+      userId: userId,
+      userName: userName,
+      userColor: userColor,
+      isCreator: true
     };
   } catch (e) {
     console.error('Create room error:', e);
-    return { success: false, error: 'Failed to create room' };
+    return { success: false, error: e.message || 'Failed to create room' };
   }
 }
 
 async function handleJoinRoom(body) {
   try {
-    const { userName, roomId } = JSON.parse(body);
+    const { roomId, userName } = JSON.parse(body);
     
-    if (!userName || userName.length < 1 || userName.length > 50) {
+    if (!roomId || !userName) {
+      return { success: false, error: 'Room ID and username required' };
+    }
+    
+    if (userName.length < 1 || userName.length > 50) {
       return { success: false, error: 'Invalid username' };
     }
     
-    const roomExists = await redis('exists', `rooms:${roomId}`);
-    if (!roomExists) {
-      return { success: false, error: 'Room not found or closed', status: 404 };
-    }
-    
-    const room = await redis('hgetall', `rooms:${roomId}`);
-    if (!room || room.isActive !== 'true') {
-      return { success: false, error: 'Room is closed' };
+    const room = await redis.hgetall(`rooms:${roomId}`);
+    if (!room || !room.id) {
+      return { success: false, error: 'Room not found' };
     }
     
     const userId = generateId('user');
-    const color = getRandomColor();
+    const userColor = getRandomColor();
+    const now = Date.now();
     
-    const user = {
+    await redis.hset(`user:${userId}`, {
       id: userId,
       name: userName,
-      color: color,
+      color: userColor,
       roomId: roomId,
       isCreator: 'false',
-      joinedAt: Date.now(),
-      lastHeartbeat: Date.now(),
-      isOnline: 'true'
-    };
+      joinedAt: now.toString(),
+      lastHeartbeat: now.toString()
+    });
     
-    await redis('hset', `user:${userId}`, ...Object.entries(user).flat());
-    await redis('sadd', `room:${roomId}:users`, userId);
-    await redis('hset', `rooms:${roomId}`, 'lastActivity', Date.now());
-    
-    const userIds = await redis('smembers', `room:${roomId}:users`) || [];
-    const roomUsers = [];
-    
-    for (const uId of userIds) {
-      const u = await redis('hgetall', `user:${uId}`);
-      if (u && u.id) {
-        roomUsers.push({ id: u.id, name: u.name, color: u.color, isCreator: u.isCreator === 'true' });
-      }
-    }
-    
-    const messages = await redis('lrange', `room:${roomId}:messages`, 0, -1) || [];
-    const parsedMessages = messages.map(m => JSON.parse(m));
+    await redis.sadd(`room:${roomId}:users`, userId);
     
     await broadcastToRoom(roomId, {
-      type: 'user_joined_room',
-      userId,
-      userName,
-      color,
-      roomUsers
-    }, userId);
-    
-    await pushEvent(userId, {
-      type: 'connected',
-      roomId,
-      userId,
-      userName,
-      color,
-      roomUsers,
-      messages: parsedMessages
+      type: 'user_joined',
+      userId: userId,
+      userName: userName,
+      userColor: userColor
     });
     
     return {
       success: true,
-      userId,
-      roomId,
-      isCreator: false,
-      usersInRoom: userIds.length,
-      message: 'Joined room successfully'
+      roomId: roomId,
+      userId: userId,
+      userName: userName,
+      userColor: userColor,
+      isCreator: false
     };
   } catch (e) {
     console.error('Join room error:', e);
-    return { success: false, error: 'Failed to join room' };
-  }
-}
-
-async function handleSendMessage(body) {
-  try {
-    const { userId, roomId, content } = JSON.parse(body);
-    
-    if (!content || content.length < 1 || content.length > 500) {
-      return { success: false, error: 'Invalid message' };
-    }
-    
-    const now = Date.now();
-    const lastMessageTime = await redis('get', `lastMessage:${userId}`);
-    const timeSinceLastMessage = lastMessageTime ? now - parseInt(lastMessageTime) : 1000;
-    
-    if (timeSinceLastMessage < 100) {
-      return { success: false, error: 'Message sent too quickly' };
-    }
-    
-    await redis('set', `lastMessage:${userId}`, now);
-    
-    const room = await redis('hgetall', `rooms:${roomId}`);
-    if (!room || !room.id || room.isActive !== 'true') {
-      return { success: false, error: 'Room not found' };
-    }
-    
-    const user = await redis('hgetall', `user:${userId}`);
-    if (!user || !user.id || user.roomId !== roomId) {
-      return { success: false, error: 'Not in this room' };
-    }
-    
-    const message = {
-      id: generateId('msg'),
-      senderId: userId,
-      senderName: user.name,
-      senderColor: user.color,
-      content: content,
-      timestamp: Date.now(),
-      roomId: roomId,
-      delivered: 'true'
-    };
-    
-    await redis('rpush', `room:${roomId}:messages`, JSON.stringify(message));
-    await redis('hset', `rooms:${roomId}`, 'lastActivity', Date.now());
-    
-    const msgCount = await redis('llen', `room:${roomId}:messages`);
-    if (msgCount > 500) {
-      await redis('ltrim', `room:${roomId}:messages`, -500, -1);
-    }
-    
-    await broadcastToRoom(roomId, {
-      type: 'message_received',
-      id: message.id,
-      senderId: message.senderId,
-      content: message.content,
-      senderName: message.senderName,
-      senderColor: message.senderColor,
-      timestamp: message.timestamp,
-      isCreator: user.isCreator
-    });
-    
-    return { success: true, messageId: message.id };
-  } catch (e) {
-    console.error('Send message error:', e);
-    return { success: false, error: 'Failed to send message' };
+    return { success: false, error: e.message || 'Failed to join room' };
   }
 }
 
@@ -295,124 +176,118 @@ async function handleLeaveRoom(body) {
   try {
     const { userId, roomId } = JSON.parse(body);
     
-    const room = await redis('hgetall', `rooms:${roomId}`);
-    if (!room || !room.id) {
-      return { success: false, error: 'Room not found' };
+    const user = await redis.hgetall(`user:${userId}`);
+    if (!user || user.roomId !== roomId) {
+      return { success: true };
     }
     
-    const user = await redis('hgetall', `user:${userId}`);
-    if (!user || !user.id) {
-      return { success: false, error: 'User not found' };
+    await redis.srem(`room:${roomId}:users`, userId);
+    await redis.del(`user:${userId}`);
+    
+    await broadcastToRoom(roomId, {
+      type: 'user_left',
+      userId: userId,
+      userName: user.name
+    });
+    
+    const remaining = await redis.scard(`room:${roomId}:users`);
+    if (remaining === 0) {
+      await redis.del(`rooms:${roomId}`);
+      await redis.del(`room:${roomId}:messages`);
     }
     
-    if (user.isCreator === 'true') {
-      await redis('hset', `rooms:${roomId}`, 'isActive', 'false');
-      
-      const creatorLeftEvent = {
-        type: 'creator_left',
-        message: `${room.creatorName} has stopped the room`,
-        creatorName: room.creatorName
-      };
-      
-      const userIds = await redis('smembers', `room:${roomId}:users`) || [];
-      for (const uId of userIds) {
-        await pushEvent(uId, creatorLeftEvent);
-      }
-      
-      await redis('del', `rooms:${roomId}`);
-      await redis('del', `room:${roomId}:users`);
-      await redis('del', `room:${roomId}:messages`);
-    } else {
-      await redis('srem', `room:${roomId}:users`, userId);
-      
-      const userIds = await redis('smembers', `room:${roomId}:users`) || [];
-      const roomUsers = [];
-      
-      for (const uId of userIds) {
-        const u = await redis('hgetall', `user:${uId}`);
-        if (u && u.id) {
-          roomUsers.push({ id: u.id, name: u.name, color: u.color, isCreator: u.isCreator });
-        }
-      }
-      
-      await broadcastToRoom(roomId, {
-        type: 'user_left_room',
-        userName: user.name,
-        remainingUsers: userIds.length,
-        roomUsers: roomUsers
-      });
-    }
-    
-    await redis('del', `user:${userId}`);
-    await redis('del', `events:${userId}`);
-    
-    return { success: true, message: 'Left room successfully' };
+    return { success: true };
   } catch (e) {
     console.error('Leave room error:', e);
-    return { success: false, error: 'Failed to leave room' };
+    return { success: false, error: e.message || 'Failed to leave room' };
+  }
+}
+
+async function handleSendMessage(body) {
+  try {
+    const { userId, roomId, text } = JSON.parse(body);
+    
+    const user = await redis.hgetall(`user:${userId}`);
+    if (!user || user.roomId !== roomId) {
+      return { success: false, error: 'Not in room' };
+    }
+    
+    const message = {
+      id: generateId('msg'),
+      userId: userId,
+      userName: user.name,
+      userColor: user.color,
+      text: text,
+      timestamp: Date.now()
+    };
+    
+    await redis.lpush(`room:${roomId}:messages`, JSON.stringify(message));
+    
+    await broadcastToRoom(roomId, {
+      type: 'new_message',
+      message: message
+    }, userId);
+    
+    return { success: true };
+  } catch (e) {
+    console.error('Send message error:', e);
+    return { success: false, error: e.message || 'Failed to send message' };
   }
 }
 
 async function handleTyping(body) {
   try {
-    const { userId, roomId, isTyping } = JSON.parse(body);
+    const { userId, roomId } = JSON.parse(body);
     
-    const room = await redis('hgetall', `rooms:${roomId}`);
-    if (!room || !room.id) return { success: false, error: 'Room not found' };
-    
-    const user = await redis('hgetall', `user:${userId}`);
-    if (!user || !user.id) return { success: false, error: 'User not found' };
-    
-    if (isTyping) {
-      await broadcastToRoom(roomId, {
-        type: 'typing_update',
-        userName: user.name,
-        isTyping: true
-      }, userId);
+    const user = await redis.hgetall(`user:${userId}`);
+    if (!user || user.roomId !== roomId) {
+      return { success: false, error: 'Not in room' };
     }
+    
+    await broadcastToRoom(roomId, {
+      type: 'user_typing',
+      userId: userId,
+      userName: user.name
+    }, userId);
     
     return { success: true };
   } catch (e) {
     console.error('Typing error:', e);
-    return { success: false, error: 'Failed to send typing' };
+    return { success: false, error: e.message || 'Failed to send typing status' };
   }
 }
 
 async function handleHeartbeat(body) {
   try {
-    const { userId } = JSON.parse(body);
+    const { userId, roomId } = JSON.parse(body);
     
-    const user = await redis('hgetall', `user:${userId}`);
-    if (!user || !user.id) {
-      return { success: false, error: 'User not found' };
+    const user = await redis.hgetall(`user:${userId}`);
+    if (!user || user.roomId !== roomId) {
+      return { success: false, error: 'Not in room' };
     }
     
-    await redis('hset', `user:${userId}`, 'lastHeartbeat', Date.now());
+    const now = Date.now().toString();
+    await redis.hset(`user:${userId}`, { lastHeartbeat: now });
     
     return { success: true };
   } catch (e) {
     console.error('Heartbeat error:', e);
-    return { success: false, error: 'Heartbeat failed' };
+    return { success: false, error: e.message || 'Failed to send heartbeat' };
   }
 }
 
 async function handlePoll(userId, roomId) {
   try {
-    if (!userId || !roomId) {
-      return { events: [] };
-    }
-    
-    const room = await redis('hgetall', `rooms:${roomId}`);
-    const user = await redis('hgetall', `user:${userId}`);
+    const user = await redis.hgetall(`user:${userId}`);
     
     if (!user || !user.id || user.roomId !== roomId) {
       return { events: [], error: 'Not in room' };
     }
     
-    const events = await redis('lrange', `events:${userId}`, 0, -1) || [];
-    await redis('del', `events:${userId}`);
+    const events = await redis.lrange(`events:${userId}`, 0, -1);
+    await redis.del(`events:${userId}`);
     
-    return { events: events.map(e => JSON.parse(e)) };
+    return { events: events && Array.isArray(events) ? events.map(e => typeof e === 'string' ? JSON.parse(e) : e) : [] };
   } catch (e) {
     console.error('Poll error:', e);
     return { events: [] };
@@ -421,28 +296,30 @@ async function handlePoll(userId, roomId) {
 
 async function handleGetRoomInfo(roomId) {
   try {
-    const room = await redis('hgetall', `rooms:${roomId}`);
+    const room = await redis.hgetall(`rooms:${roomId}`);
     if (!room || !room.id) {
       return { success: false, error: 'Room not found' };
     }
     
-    const userIds = await redis('smembers', `room:${roomId}:users`) || [];
+    const userIds = await redis.smembers(`room:${roomId}:users`);
     const users = [];
     
-    for (const uId of userIds) {
-      const u = await redis('hgetall', `user:${uId}`);
-      if (u && u.id) {
-        users.push({
-          id: u.id,
-          name: u.name,
-          color: u.color,
-          isCreator: u.isCreator === 'true',
-          joinedAt: parseInt(u.joinedAt)
-        });
+    if (userIds && Array.isArray(userIds)) {
+      for (const uId of userIds) {
+        const u = await redis.hgetall(`user:${uId}`);
+        if (u && u.id) {
+          users.push({
+            id: u.id,
+            name: u.name,
+            color: u.color,
+            isCreator: u.isCreator === 'true',
+            joinedAt: parseInt(u.joinedAt)
+          });
+        }
       }
     }
     
-    const messages = await redis('llen', `room:${roomId}:messages`);
+    const messages = await redis.llen(`room:${roomId}:messages`);
     
     return {
       success: true,
@@ -450,56 +327,57 @@ async function handleGetRoomInfo(roomId) {
         id: room.id,
         creatorId: room.creatorId,
         creatorName: room.creatorName,
-        usersCount: userIds.length,
+        usersCount: userIds ? userIds.length : 0,
         users: users,
-        messageCount: messages,
+        messageCount: messages || 0,
         createdAt: parseInt(room.createdAt)
       }
     };
   } catch (e) {
     console.error('Get room info error:', e);
-    return { success: false, error: 'Failed to get room info' };
+    return { success: false, error: e.message || 'Failed to get room info' };
   }
 }
 
 async function handleStatus() {
   try {
-    const roomKeys = await redis('keys', 'rooms:*') || [];
-    const userKeys = await redis('keys', 'user:*') || [];
+    const roomKeys = await redis.keys('rooms:*');
+    const userKeys = await redis.keys('user:*');
     
     let totalMessages = 0;
-    for (const roomKey of roomKeys) {
-      const roomId = roomKey.replace('rooms:', '');
-      const count = await redis('llen', `room:${roomId}:messages`);
-      totalMessages += count || 0;
+    if (roomKeys && Array.isArray(roomKeys)) {
+      for (const roomKey of roomKeys) {
+        const roomId = roomKey.replace('rooms:', '');
+        const count = await redis.llen(`room:${roomId}:messages`);
+        totalMessages += count || 0;
+      }
     }
     
     return {
       success: true,
       status: {
-        activeRooms: roomKeys.length,
-        totalUsers: userKeys.length,
+        activeRooms: roomKeys ? roomKeys.length : 0,
+        totalUsers: userKeys ? userKeys.length : 0,
         totalMessages: totalMessages,
         timestamp: Date.now()
       }
     };
   } catch (e) {
     console.error('Status error:', e);
-    return { success: false, error: 'Failed to get status' };
+    return { success: false, error: e.message || 'Failed to get status' };
   }
 }
 
 async function handleDebug() {
   return {
-    redisConfigured: !!REDIS_URL,
-    upstashConfigured: !!UPSTASH_API,
+    redisConfigured: !!redis,
+    redisUrlSet: !!REDIS_URL,
     redisUrlPrefix: REDIS_URL ? REDIS_URL.substring(0, 20) + '...' : 'NOT SET',
     timestamp: Date.now(),
     environment: process.env.NODE_ENV || 'unknown'
   };
 }
 
-// Main handler
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -510,8 +388,8 @@ export default async function handler(req, res) {
     return;
   }
   
-  if (!REDIS_URL) {
-    console.error('REDIS_URL not configured');
+  if (!redis) {
+    console.error('Redis not configured');
     return res.status(500).json({ success: false, error: 'Server not configured' });
   }
   
@@ -570,7 +448,7 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('API error:', error);
-    return res.status(500).json({ success: false, error: 'Server error' });
+    return res.status(500).json({ success: false, error: error.message || 'Server error' });
   }
   
   res.status(404).json({ error: 'Not found' });
