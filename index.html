@@ -1146,21 +1146,21 @@
     };
 
     const API_BASE = (() => {
-      // Use configured server URL if provided
-      if (window.APP_CONFIG?.SERVER_URL) {
-        return `${window.APP_CONFIG.SERVER_URL}/api`;
-      }
-      
       const hostname = window.location.hostname;
       const protocol = window.location.protocol;
       
-      // Local development: auto-detect localhost and local network IPs
+      // Deployed on Vercel (production)
+      if (hostname.includes('vercel.app') || hostname.includes('vercel.sh')) {
+        return '/api';
+      }
+      
+      // Local development with Node server
       if (hostname === 'localhost' || hostname.startsWith('127.') || hostname.startsWith('192.168') || hostname.startsWith('10.')) {
         return `http://${hostname}:3000/api`;
       }
       
-      // Deployed: try using same domain (works if frontend and backend on same domain)
-      return `${protocol}//${hostname}/api`;
+      // Fallback to relative path (works on any deployment)
+      return '/api';
     })();
 
     document.querySelectorAll('[data-tab]').forEach(btn => {
