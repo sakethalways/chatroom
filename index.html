@@ -1138,6 +1138,7 @@
       currentTab: 'create',
       pollingInterval: null,
       heartbeatInterval: null,
+      refreshInterval: null,
       typingTimeout: null,
       messages: [],
       roomUsers: [],
@@ -1359,6 +1360,34 @@
     function startPolling() {
       poll();
       state.pollingInterval = setInterval(poll, 200);
+      // Refresh room state every 5 seconds as a safety net
+      state.refreshInterval = setInterval(refreshRoomState, 5000);
+    }
+
+    async function refreshRoomState() {
+      try {
+        const response = await fetch(
+          `${API_BASE}/chat?action=refresh_room_state&userId=${state.userId}&roomId=${state.roomId}`
+        );
+        const data = await response.json();
+        
+        if (data.success && data.roomUsers && data.messages) {
+          // Only update if there are actual changes
+          const usersChanged = JSON.stringify(state.roomUsers) !== JSON.stringify(data.roomUsers);
+          const messagesChanged = state.messages.length !== data.messages.length;
+          
+          if (usersChanged) {
+            state.roomUsers = data.roomUsers;
+            updateMembers();
+          }
+          if (messagesChanged) {
+            state.messages = data.messages;
+            updateMessages();
+          }
+        }
+      } catch (e) {
+        console.error('Refresh error:', e);
+      }
     }
 
     async function poll() {
@@ -1657,6 +1686,7 @@
     function redirectHome() {
       clearInterval(state.pollingInterval);
       clearInterval(state.heartbeatInterval);
+      clearInterval(state.refreshInterval);
       
       state.typingTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
 
@@ -1668,6 +1698,9 @@
         currentTab: 'create',
         messages: [],
         roomUsers: [],
+        pollingInterval: null,
+        heartbeatInterval: null,
+        refreshInterval: null,
         typingUsers: new Map(),
         typingTimeouts: new Map()
       };
