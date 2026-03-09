@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ChatRoom - Real-Time Multi-User Chat</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%234CAF50'>💬</text></svg>">
+  
+  <!-- ========== SERVER CONFIGURATION ========== 
+       For deployed versions:
+       1. Change SERVER_URL to your Render backend URL
+       2. Example: https://chatroom-xyz.onrender.com
+       ============================================ -->
+  <script>
+    window.APP_CONFIG = {
+      SERVER_URL: null // Set to Render URL when deployed, or null for auto-detection
+    };
+  </script>
+  
   <style>
     * {
       margin: 0;
@@ -1133,7 +1145,23 @@
       typingTimeouts: new Map()
     };
 
-    const API_BASE = `http://${window.location.hostname}:3000/api`;
+    const API_BASE = (() => {
+      // Use configured server URL if provided
+      if (window.APP_CONFIG?.SERVER_URL) {
+        return `${window.APP_CONFIG.SERVER_URL}/api`;
+      }
+      
+      const hostname = window.location.hostname;
+      const protocol = window.location.protocol;
+      
+      // Local development: auto-detect localhost and local network IPs
+      if (hostname === 'localhost' || hostname.startsWith('127.') || hostname.startsWith('192.168') || hostname.startsWith('10.')) {
+        return `http://${hostname}:3000/api`;
+      }
+      
+      // Deployed: try using same domain (works if frontend and backend on same domain)
+      return `${protocol}//${hostname}/api`;
+    })();
 
     document.querySelectorAll('[data-tab]').forEach(btn => {
       btn.addEventListener('click', (e) => {
