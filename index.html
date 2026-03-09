@@ -1406,7 +1406,11 @@
         );
         const data = await response.json();
 
-        if (data.events) {
+        if (data.events && data.events.length > 0) {
+          const eventTypes = data.events.map(e => e.type);
+          if (eventTypes.includes('creator_left')) {
+            console.log('🎯 Poll has creator_left event:', data.events);
+          }
           data.events.forEach(event => {
             handleEvent(event);
           });
@@ -1454,6 +1458,7 @@
           break;
 
         case 'creator_left':
+          console.log('🚨 Creator left event received:', event);
           clearInterval(state.pollingInterval);
           clearInterval(state.heartbeatInterval);
           state.typingTimeouts.forEach(timeoutId => clearTimeout(timeoutId));

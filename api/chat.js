@@ -270,17 +270,32 @@ async function handleLeaveRoom(body) {
     if (isCreator) {
       // Creator left - close room and notify all users
       const allUserIds = await redis.smembers(`room:${roomId}:users`);
+      console.log(`👑 Creator ${user.name} closing room ${roomId}, notifying ${allUserIds?.length || 0} users`);
       if (allUserIds && Array.isArray(allUserIds)) {
         for (const uId of allUserIds) {
+          console.log(`  📤 Sending creator_left to ${uId}`);
           await pushEvent(uId, {
             type: 'creator_left',
             creatorName: user.name
           });
         }
       }
-      await redis.del(`rooms:${roomId}`);
-      await redis.del(`room:${roomId}:users`);
-      await redis.del(`room:${roomId}:messages`);
+      
+      // Don't delete immediately - give users time to poll and receive the event
+      // Delete room data keys with a small delay to ensure all users get the notification
+      const delayedCleanup = async () => {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
+        try {
+          await redis.del(`rooms:${roomId}`);
+          await redis.del(`room:${roomId}:users`);
+          await redis.del(`room:${roomId}:messages`);
+        } catch (e) {
+          console.error('Error cleaning up room:', e);
+        }
+      };
+      
+      // Run cleanup asynchronously without blocking response
+      delayedCleanup().catch(console.error);
     } else {
       // Regular user left - update room and notify others
       await redis.srem(`room:${roomId}:users`, userId);
