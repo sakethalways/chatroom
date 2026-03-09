@@ -469,6 +469,54 @@ async function handleGetRoomInfo(roomId) {
   }
 }
 
+async function handleRefreshRoomState(userId, roomId) {
+  try {
+    const user = await redis.hgetall(`user:${userId}`);
+    if (!user || user.roomId !== roomId) {
+      return { success: false, error: 'Not in room' };
+    }
+    
+    // Get current room state
+    const userIds = await redis.smembers(`room:${roomId}:users`);
+    const roomUsers = [];
+    if (userIds && Array.isArray(userIds)) {
+      for (const uId of userIds) {
+        const u = await redis.hgetall(`user:${uId}`);
+        if (u && u.id) {
+          roomUsers.push({
+            id: u.id,
+            name: u.name,
+            color: u.color,
+            isCreator: u.isCreator === 'true'
+          });
+        }
+      }
+    }
+    
+    // Get all messages
+    const messagesList = await redis.lrange(`room:${roomId}:messages`, 0, -1);
+    const messages = [];
+    if (messagesList && Array.isArray(messagesList)) {
+      for (const msg of messagesList) {
+        try {
+          messages.push(JSON.parse(msg));
+        } catch (e) {
+          console.error('Error parsing message:', e);
+        }
+      }
+    }
+    
+    return {
+      success: true,
+      roomUsers: roomUsers,
+      messages: messages
+    };
+  } catch (e) {
+    console.error('Refresh room state error:', e);
+    return { success: false, error: e.message || 'Failed to refresh room state' };
+  }
+}
+
 async function handleStatus() {
   try {
     const roomKeys = await redis.keys('rooms:*');
@@ -563,6 +611,9 @@ export default async function handler(req, res) {
           break;
         case 'get_room_info':
           response = await handleGetRoomInfo(req.query.roomId);
+          break;
+        case 'refresh_room_state':
+          response = await handleRefreshRoomState(req.query.userId, req.query.roomId);
           break;
         case 'status':
           response = await handleStatus();
