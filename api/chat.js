@@ -489,6 +489,16 @@ async function handleStatus() {
   }
 }
 
+async function handleDebug() {
+  return {
+    redisConfigured: !!REDIS_URL,
+    upstashConfigured: !!UPSTASH_API,
+    redisUrlPrefix: REDIS_URL ? REDIS_URL.substring(0, 20) + '...' : 'NOT SET',
+    timestamp: Date.now(),
+    environment: process.env.NODE_ENV || 'unknown'
+  };
+}
+
 // Main handler
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -548,6 +558,9 @@ export default async function handler(req, res) {
           break;
         case 'status':
           response = await handleStatus();
+          break;
+        case 'debug':
+          response = await handleDebug();
           break;
         default:
           response = { success: false, error: 'Unknown action' };
